@@ -1,9 +1,9 @@
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
     DefaultTerminal, Frame,
-    style::Stylize,
+    style::{Style, Stylize},
     text::Line,
-    widgets::{Block, Paragraph},
+    widgets::{Block, List, ListItem, ListState, Paragraph},
 };
 
 fn main() -> color_eyre::Result<()> {
@@ -19,12 +19,24 @@ fn main() -> color_eyre::Result<()> {
 pub struct App {
     /// Is the application running?
     running: bool,
+
+    // menu items vec 
+    menu_items: Vec<String>,
+    selected: usize,
 }
 
 impl App {
     /// Construct a new instance of [`App`].
     pub fn new() -> Self {
-        Self::default()
+        Self { 
+            running: true, 
+            menu_items: vec![
+                "Check for updates".into(),
+                "Weather".into(),
+                "Check Repo (Git only)".into(),
+            ], 
+            selected: 0 
+        }
     }
 
     /// Run the application's main loop.
@@ -44,19 +56,28 @@ impl App {
     /// - <https://docs.rs/ratatui/latest/ratatui/widgets/index.html>
     /// - <https://github.com/ratatui/ratatui/tree/main/ratatui-widgets/examples>
     fn render(&mut self, frame: &mut Frame) {
-        let title = Line::from("Ratatui Simple Template")
+        // title
+        let title = Line::from("CLI Home")
             .bold()
             .blue()
             .centered();
-        let text = "Hello, Ratatui!\n\n\
-            Created using https://github.com/ratatui/templates\n\
-            Press `Esc`, `Ctrl-C` or `q` to stop running.";
-        frame.render_widget(
-            Paragraph::new(text)
-                .block(Block::bordered().title(title))
-                .centered(),
-            frame.area(),
-        )
+
+        // list with options
+        let items: Vec<ListItem> = self
+            .menu_items
+            .iter()
+            .map(|item| ListItem::new(item.as_str()))
+            .collect();
+        
+        let mut state = ListState::default();
+        state.select(Some(self.selected)); // improtaint
+
+        let list = List::new(items)
+            .block(Block::bordered().title(title))
+            .highlight_style(Style::new().yellow().bold())
+            .highlight_symbol(">> ");
+
+        frame.render_stateful_widget(list, frame.area(), &mut state);
     }
 
     /// Reads the crossterm events and updates the state of [`App`].
@@ -76,11 +97,42 @@ impl App {
 
     /// Handles the key events and updates the state of [`App`].
     fn on_key_event(&mut self, key: KeyEvent) {
-        match (key.modifiers, key.code) {
-            (_, KeyCode::Esc | KeyCode::Char('q'))
-            | (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => self.quit(),
-            // Add other key handlers here.
-            _ => {}
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('q') => self.quit(),
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => self.quit(),
+
+            KeyCode::Up => {
+                if self.selected > 0 {
+                    self.selected -= 1;
+                }
+            }
+            KeyCode::Down => {
+            if self.selected < self.menu_items.len() - 1 {
+                self.selected += 1;
+            }
+        }
+
+        KeyCode::Enter => {
+            // Hier passiert die Auswahl!
+            let gewaehlt = &self.menu_items[self.selected];
+            println!("\nDu hast gewählt: {}", gewaehlt);
+
+            // Beispiel-Reaktionen:
+            match self.selected {
+                0 => println!("Starte neues Spiel..."),
+                1 => println!("Lade Spielstand..."),
+                2 => println!("Öffne Einstellungen..."),
+                3 => self.quit(), // Beenden
+                _ => {}
+            }
+
+            // Wenn du nicht beim "Beenden" bist, einfach weiterlaufen
+            if self.selected != 3 {
+                println!("Drücke eine beliebige Taste zum Fortfahren...");
+                let _ = event::read(); // warte auf nächste Taste
+            }
+        }
+        _ => {}
         }
     }
 
