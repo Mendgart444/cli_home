@@ -3,13 +3,16 @@ use ratatui::{
     DefaultTerminal, Frame,
     style::{Style, Stylize},
     text::Line,
-    widgets::{Block, List, ListItem, ListState, Paragraph},
+    widgets::{Block, List, ListItem, ListState},
 };
 
-fn main() -> color_eyre::Result<()> {
+use std::process::Command;
+
+#[tokio::main]
+async fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
     let terminal = ratatui::init();
-    let result = App::new().run(terminal);
+    let result = App::new().run(terminal).await;
     ratatui::restore();
     result
 }
@@ -19,6 +22,9 @@ fn main() -> color_eyre::Result<()> {
 pub struct App {
     /// Is the application running?
     running: bool,
+
+    // update sucsess?
+    success: String,
 
     // menu items vec 
     menu_items: Vec<String>,
@@ -34,17 +40,19 @@ impl App {
                 "Check for updates".into(),
                 "Weather".into(),
                 "Check Repo (Git only)".into(),
+                "quit".into(),
             ], 
-            selected: 0 
+            selected: 0,
+            success: "".to_string(),
         }
     }
 
     /// Run the application's main loop.
-    pub fn run(mut self, mut terminal: DefaultTerminal) -> color_eyre::Result<()> {
+    pub async fn run(mut self, mut terminal: DefaultTerminal) -> color_eyre::Result<()> {
         self.running = true;
         while self.running {
             terminal.draw(|frame| self.render(frame))?;
-            self.handle_crossterm_events()?;
+            self.handle_crossterm_events().await?;
         }
         Ok(())
     }
@@ -84,10 +92,10 @@ impl App {
     ///
     /// If your application needs to perform work in between handling events, you can use the
     /// [`event::poll`] function to check if there are any events available with a timeout.
-    fn handle_crossterm_events(&mut self) -> color_eyre::Result<()> {
+    async fn handle_crossterm_events(&mut self) -> color_eyre::Result<()> {
         match event::read()? {
             // it's important to check KeyEventKind::Press to avoid handling key release events
-            Event::Key(key) if key.kind == KeyEventKind::Press => self.on_key_event(key),
+            Event::Key(key) if key.kind == KeyEventKind::Press => self.on_key_event(key).await,
             Event::Mouse(_) => {}
             Event::Resize(_, _) => {}
             _ => {}
@@ -96,7 +104,7 @@ impl App {
     }
 
     /// Handles the key events and updates the state of [`App`].
-    fn on_key_event(&mut self, key: KeyEvent) {
+    async fn on_key_event(&mut self, key: KeyEvent) {
         match key.code {
             KeyCode::Esc | KeyCode::Char('q') => self.quit(),
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => self.quit(),
@@ -113,23 +121,13 @@ impl App {
         }
 
         KeyCode::Enter => {
-            // Hier passiert die Auswahl!
-            let gewaehlt = &self.menu_items[self.selected];
-            println!("\nDu hast gewählt: {}", gewaehlt);
-
             // Beispiel-Reaktionen:
             match self.selected {
-                0 => println!("Starte neues Spiel..."),
-                1 => println!("Lade Spielstand..."),
-                2 => println!("Öffne Einstellungen..."),
+                0 => self.check_for_updates().unwrap(),
+                1 => println!("Retrieve Weather info..."),
+                2 => println!("Checking"),
                 3 => self.quit(), // Beenden
                 _ => {}
-            }
-
-            // Wenn du nicht beim "Beenden" bist, einfach weiterlaufen
-            if self.selected != 3 {
-                println!("Drücke eine beliebige Taste zum Fortfahren...");
-                let _ = event::read(); // warte auf nächste Taste
             }
         }
         _ => {}
@@ -139,5 +137,13 @@ impl App {
     /// Set running to false to quit the application.
     fn quit(&mut self) {
         self.running = false;
+    }
+
+    fn check_for_updates(&mut self) -> Result<(), String> {
+        let apt = Command::new("sudo")
+            .args(["apt", "update"])
+            .output().expect("Error failed to run `sudo apt update`");
+        
+        Ok(())
     }
 }
