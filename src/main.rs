@@ -18,17 +18,24 @@ async fn main() -> color_eyre::Result<()> {
 }
 
 /// The main application which holds the state and logic of the application.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct App {
     /// Is the application running?
     running: bool,
 
     // update sucsess?
-    success: String,
+    last_status: Vec<RunStatus>,
 
     // menu items vec 
     menu_items: Vec<String>,
     selected: usize,
+}
+
+#[derive(Debug, Clone)]
+enum RunStatus {
+    Never,
+    Success,
+    Failed(String),
 }
 
 impl App {
@@ -43,7 +50,7 @@ impl App {
                 "quit".into(),
             ], 
             selected: 0,
-            success: "".to_string(),
+            last_status: vec![RunStatus::Never; 4],
         }
     }
 
@@ -74,7 +81,24 @@ impl App {
         let items: Vec<ListItem> = self
             .menu_items
             .iter()
-            .map(|item| ListItem::new(item.as_str()))
+            .zip(&self.last_status)
+            .enumerate()
+            .map(|(i, (name, status))| {
+                let status_text = match status {
+                RunStatus::Never => " (never run)".gray(),
+                RunStatus::Success => " (success)".green().bold(),
+                RunStatus::Failed(message) => format!(" (failed: {})", message).red().bold(),
+            };
+
+            if i == self.menu_items.len() - 1 {
+                ListItem::new(name.as_str())
+            } else {
+                ListItem::new(Line::from(vec![
+                    name.clone().into(),
+                    status_text,
+                ]))
+            }
+            })
             .collect();
         
         let mut state = ListState::default();
@@ -123,7 +147,7 @@ impl App {
         KeyCode::Enter => {
             // Beispiel-Reaktionen:
             match self.selected {
-                0 => self.check_for_updates().unwrap(),
+                0 => self.check_for_updates(),
                 1 => println!("Retrieve Weather info..."),
                 2 => println!("Checking"),
                 3 => self.quit(), // Beenden
@@ -139,11 +163,19 @@ impl App {
         self.running = false;
     }
 
-    fn check_for_updates(&mut self) -> Result<(), String> {
-        let apt = Command::new("sudo")
-            .args(["apt", "update"])
-            .output().expect("Error failed to run `sudo apt update`");
-        
-        Ok(())
+    fn check_for_updates(&mut self) {
+        match Command::new("sudo").args(["apt", "update"]).output() {
+        Ok(output) => {
+            if output.status.success() {
+                self.last_status[0] = RunStatus::Success;
+            } else {
+                let err = String::from_utf8_lossy(&output.stderr);
+                self.last_status[0] = RunStatus::Failed(err.lines().next().unwrap_or("unknown error").to_string());
+            }
+        }
+        Err(e) => {
+            self.last_status[0] = RunStatus::Failed(e.to_string());
+        }
+    }
     }
 }
